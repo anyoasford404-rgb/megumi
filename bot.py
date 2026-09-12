@@ -93,6 +93,7 @@ async def ask_gemini(contents, system_instruction, temperature=0.85):
             except Exception as e:
                 last_err = e
                 err_str = str(e)
+                print(f"Model {model_name} chuyển tiếp do lỗi: {err_str[:150]}")
                 if "SAFETY" in err_str.upper() or "FINISHREASON" in err_str.upper():
                     return "Bố trận... Bát Ngát Kiếm Ma Ha La! (Mahoraga được triệu hồi, Megumi im lặng phó mặc cho thức thần!)"
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "404" in err_str or "NOT_FOUND" in err_str or "demand" in err_str:
@@ -101,7 +102,7 @@ async def ask_gemini(contents, system_instruction, temperature=0.85):
                     await asyncio.sleep(1.0)
                     continue
                 break
-    raise last_err
+    return "Tôi đã cạn kiệt năng lượng (Hết hạn mức API), vui lòng thử lại sau vài phút."
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -364,7 +365,7 @@ async def slash_sync_commands(interaction: discord.Interaction):
         bot.tree.clear_commands(guild=interaction.guild)
         await bot.tree.sync(guild=interaction.guild)
         synced = await bot.tree.sync()
-        await interaction.followup.send(f"Đã đồng bộ {len(synced)} lệnh.")
+        await interaction.followup.send(f"Đã dọn sạch lệnh rác và đồng bộ {len(synced)} lệnh. Vui lòng bấm Ctrl+R trên Discord để cập nhật giao diện.")
     except Exception as e:
         await interaction.followup.send(f"Lỗi: {e}")
 
