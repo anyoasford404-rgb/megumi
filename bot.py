@@ -295,7 +295,7 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
         await interaction.response.send_message(f"Không đủ Chú lực. Cậu chỉ có {chu_luc:,}.", ephemeral=True)
         return
         
-    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌']
+    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌', '☸︎', '🐯']
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
