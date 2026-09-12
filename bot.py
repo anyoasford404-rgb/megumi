@@ -299,11 +299,11 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
-        winnings = amount * 5
+        winnings = amount * 8
         cursor.execute('UPDATE users SET chu_luc = chu_luc + ? WHERE user_id = ?', (winnings - amount, user_id))
         msg = f"Tốt lắm. Trúng giải độc đắc rồi. Cậu nhận được **{winnings:,} Chú lực**."
     elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
-        winnings = int(amount * 1.5)
+        winnings = int(amount * 4)
         cursor.execute('UPDATE users SET chu_luc = chu_luc + ? WHERE user_id = ?', (winnings - amount, user_id))
         msg = f"Cũng tạm. Cậu nhận được **{winnings:,} Chú lực**."
     else:
