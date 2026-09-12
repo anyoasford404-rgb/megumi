@@ -295,7 +295,7 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
         await interaction.response.send_message(f"Không đủ Chú lực. Cậu chỉ có {chu_luc:,}.", ephemeral=True)
         return
         
-    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌', '☸︎', '🐯']
+    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌']
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
@@ -330,9 +330,7 @@ async def top_chu_luc(interaction: discord.Interaction):
         
     desc = ""
     for idx, (uid, cl) in enumerate(top_users, 1):
-        user = bot.get_user(int(uid))
-        name = user.display_name if user else f"Người dùng {uid}"
-        desc += f"**{idx}.** {name} - {cl:,} Chú lực\n"
+        desc += f"**{idx}.** <@{uid}> - {cl:,} Chú lực\n"
         
     embed = discord.Embed(
         title="🏆 Bảng Xếp Hạng Chú Lực",
