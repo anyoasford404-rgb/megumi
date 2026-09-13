@@ -496,6 +496,33 @@ SHOP_ITEMS = {
     "mahoraga": {"name": "Mahoraga", "price": 50000, "desc": "Kháng Mute vĩnh viễn"}
 }
 
+@bot.tree.command(name="admin_remove_item", description="Admin: Thu hồi Thức thần của một người")
+@app_commands.default_permissions(administrator=True)
+@app_commands.choices(item=[
+    app_commands.Choice(name="Ngọc Khuyển", value="ngoc_khuyen"),
+    app_commands.Choice(name="Nue", value="nue"),
+    app_commands.Choice(name="Thoát Thố", value="thoat_tho"),
+    app_commands.Choice(name="Mahoraga", value="mahoraga"),
+])
+async def admin_remove_item(interaction: discord.Interaction, member: discord.Member, item: app_commands.Choice[str]):
+    get_user(member.id) # Ensure user exists
+    
+    # Get current user data to see if they have the item
+    user_data = get_user(member.id)
+    item_idx = 5 if item.value == "ngoc_khuyen" else (6 if item.value == "nue" else (7 if item.value == "thoat_tho" else 8))
+    
+    if user_data[item_idx] <= 0:
+        await interaction.response.send_message(f"❌ {member.mention} không có {item.name} để thu hồi.", ephemeral=True)
+        return
+        
+    # If Mahoraga, completely remove it. If others, just remove 1.
+    if item.value == "mahoraga":
+        update_user_item(member.id, item.value, -user_data[item_idx]) # Remove all instances (usually just 1)
+        await interaction.response.send_message(f"🛠️ (Admin) Đã tước đoạt **{item.name}** khỏi {member.mention}.")
+    else:
+        update_user_item(member.id, item.value, -1)
+        await interaction.response.send_message(f"🛠️ (Admin) Đã thu hồi 1 **{item.name}** của {member.mention}.")
+
 @bot.tree.command(name="shop", description="Cửa hàng Thức thần")
 async def shop(interaction: discord.Interaction):
     desc = ""
