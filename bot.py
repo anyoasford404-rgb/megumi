@@ -490,10 +490,10 @@ async def slash_sync_commands(interaction: discord.Interaction):
 # ==============================================================================
 
 SHOP_ITEMS = {
-    "ngoc_khuyen": {"name": "Ngọc Khuyển", "price": 1600, "desc": "Mute đối phương 2 phút"},
-    "nue": {"name": "Nue (Chim Điện)", "price": 2000, "desc": "Mute đối phương 5 phút"},
-    "thoat_tho": {"name": "Thoát Thố", "price": 500, "desc": "40% tỷ lệ né Mute (tự tiêu hao 1 con)"},
-    "mahoraga": {"name": "Mahoraga", "price": 50000, "desc": "Kháng Mute vĩnh viễn"}
+    "ngoc_khuyen": {"name": "Ngọc Khuyển", "price": 800, "desc": "Mute đối phương 2 phút"},
+    "nue": {"name": "Nue (Chim Điện)", "price": 1500, "desc": "Mute đối phương 5 phút"},
+    "thoat_tho": {"name": "Thoát Thố", "price": 400, "desc": "40% tỷ lệ né Mute (tự tiêu hao 1 con)"},
+    "mahoraga": {"name": "Mahoraga", "price": 30000, "desc": "Kháng Mute vĩnh viễn"}
 }
 
 @bot.tree.command(name="admin_remove_item", description="Admin: Thu hồi Thức thần của một người")
