@@ -415,11 +415,11 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
         await interaction.response.send_message(f"Không đủ Chú lực. Cậu chỉ có {chu_luc:,}.", ephemeral=True)
         return
         
-    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌']
+    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌', '☸', '🐅', '⛩️']
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
-        winnings = amount * 8
+        winnings = amount * 11
         update_user_chu_luc(user_id, winnings - amount)
         msg = f"Tốt lắm. Trúng giải độc đắc rồi. Cậu nhận được **{winnings:,} Chú lực**."
     elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
