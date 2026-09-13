@@ -504,10 +504,10 @@ SHOP_ITEMS = {
     app_commands.Choice(name="Mahoraga", value="mahoraga"),
 ])
 async def admin_remove_item(interaction: discord.Interaction, member: discord.Member, item: app_commands.Choice[str]):
-    if interaction.user.id != 1145214041764356176:
-        await interaction.response.send_message("❌ Chỉ có Thượng Tầng (Developer) mới được dùng lệnh này.", ephemeral=True)
+    if interaction.user.id != 1502579398560317441:
+        await interaction.response.send_message("❌ Kẻ mạo danh! Chỉ có Chủ nhân (Developer) mới được dùng quyền này.", ephemeral=True)
         return
-
+        
     get_user(member.id) # Ensure user exists
     
     # Get current user data to see if they have the item
@@ -640,8 +640,8 @@ async def trade_chu_luc(interaction: discord.Interaction, member: discord.Member
 
 @bot.tree.command(name="admin_add", description="Admin: Bơm Chú lực cho user")
 async def admin_add(interaction: discord.Interaction, member: discord.Member, amount: int):
-    if interaction.user.id != 1145214041764356176:
-        await interaction.response.send_message("❌ Chỉ có Thượng Tầng (Developer) mới được dùng lệnh này.", ephemeral=True)
+    if interaction.user.id != 1502579398560317441:
+        await interaction.response.send_message("❌ Kẻ mạo danh! Chỉ có Chủ nhân (Developer) mới được dùng quyền này.", ephemeral=True)
         return
         
     get_user(member.id)
@@ -650,8 +650,8 @@ async def admin_add(interaction: discord.Interaction, member: discord.Member, am
 
 @bot.tree.command(name="admin_remove", description="Admin: Trừ Chú lực của user")
 async def admin_remove(interaction: discord.Interaction, member: discord.Member, amount: int):
-    if interaction.user.id != 1145214041764356176:
-        await interaction.response.send_message("❌ Chỉ có Thượng Tầng (Developer) mới được dùng lệnh này.", ephemeral=True)
+    if interaction.user.id != 1502579398560317441:
+        await interaction.response.send_message("❌ Kẻ mạo danh! Chỉ có Chủ nhân (Developer) mới được dùng quyền này.", ephemeral=True)
         return
         
     if amount <= 0:
