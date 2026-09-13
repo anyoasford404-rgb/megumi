@@ -15,29 +15,124 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ==============================================================================
-# DATABASE SETUP (SQLite) cho Chú lực và Lịch sử
+# DATABASE SETUP: MONGODB (Đám mây vĩnh viễn) + FALLBACK SQLITE
 # ==============================================================================
-conn = sqlite3.connect('megumi_data.db', check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id TEXT PRIMARY KEY,
-        chu_luc INTEGER DEFAULT 0,
-        last_daily TIMESTAMP,
-        streak INTEGER DEFAULT 0,
-        last_chat_reward TIMESTAMP
-    )
-''')
-conn.commit()
+MONGO_URI = os.getenv("MONGO_URI")
+use_mongo = False
+users_collection = None
+
+if MONGO_URI:
+    try:
+        from pymongo import MongoClient
+        mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+        db = mongo_client["megumi_database"]
+        users_collection = db["users"]
+        # Thử kết nối kiểm tra
+        mongo_client.admin.command('ping')
+        use_mongo = True
+        print("✅ Đã kết nối thành công MongoDB Atlas! Chú lực sẽ được lưu vĩnh viễn trên đám mây.", flush=True)
+    except Exception as e:
+        print(f"⚠️ Không thể kết nối MongoDB ({e}), chuyển sang chế độ SQLite cục bộ.", flush=True)
+        use_mongo = False
+
+if not use_mongo:
+    conn = sqlite3.connect('megumi_data.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            chu_luc INTEGER DEFAULT 0,
+            last_daily TIMESTAMP,
+            streak INTEGER DEFAULT 0,
+            last_chat_reward TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    print("ℹ️ Đang sử dụng SQLite cục bộ (lưu ý: trên Render Free file .db sẽ bị reset khi restart).", flush=True)
 
 def get_user(user_id):
-    cursor.execute('SELECT * FROM users WHERE user_id = ?', (str(user_id),))
-    row = cursor.fetchone()
-    if row is None:
-        cursor.execute('INSERT INTO users (user_id) VALUES (?)', (str(user_id),))
+    """
+    Trả về tuple tương thích: (user_id, chu_luc, last_daily, streak, last_chat_reward)
+    """
+    uid_str = str(user_id)
+    if use_mongo and users_collection is not None:
+        doc = users_collection.find_one({"user_id": uid_str})
+        if doc is None:
+            new_doc = {
+                "user_id": uid_str,
+                "chu_luc": 0,
+                "last_daily": None,
+                "streak": 0,
+                "last_chat_reward": None
+            }
+            users_collection.insert_one(new_doc)
+            return (uid_str, 0, None, 0, None)
+        return (
+            doc.get("user_id", uid_str),
+            doc.get("chu_luc", 0),
+            doc.get("last_daily", None),
+            doc.get("streak", 0),
+            doc.get("last_chat_reward", None)
+        )
+    else:
+        cursor.execute('SELECT * FROM users WHERE user_id = ?', (uid_str,))
+        row = cursor.fetchone()
+        if row is None:
+            cursor.execute('INSERT INTO users (user_id) VALUES (?)', (uid_str,))
+            conn.commit()
+            return (uid_str, 0, None, 0, None)
+        return row
+
+def update_user_chat_reward(user_id, reward, now_iso):
+    uid_str = str(user_id)
+    if use_mongo and users_collection is not None:
+        users_collection.update_one(
+            {"user_id": uid_str},
+            {
+                "$inc": {"chu_luc": reward},
+                "$set": {"last_chat_reward": now_iso}
+            },
+            upsert=True
+        )
+    else:
+        cursor.execute('UPDATE users SET chu_luc = chu_luc + ?, last_chat_reward = ? WHERE user_id = ?', (reward, now_iso, uid_str))
         conn.commit()
-        return (str(user_id), 0, None, 0, None)
-    return row
+
+def update_user_daily(user_id, reward, now_iso, streak):
+    uid_str = str(user_id)
+    if use_mongo and users_collection is not None:
+        users_collection.update_one(
+            {"user_id": uid_str},
+            {
+                "$inc": {"chu_luc": reward},
+                "$set": {"last_daily": now_iso, "streak": streak}
+            },
+            upsert=True
+        )
+    else:
+        cursor.execute('UPDATE users SET chu_luc = chu_luc + ?, last_daily = ?, streak = ? WHERE user_id = ?', 
+                      (reward, now_iso, streak, uid_str))
+        conn.commit()
+
+def update_user_chu_luc(user_id, delta):
+    uid_str = str(user_id)
+    if use_mongo and users_collection is not None:
+        users_collection.update_one(
+            {"user_id": uid_str},
+            {"$inc": {"chu_luc": delta}},
+            upsert=True
+        )
+    else:
+        cursor.execute('UPDATE users SET chu_luc = chu_luc + ? WHERE user_id = ?', (delta, uid_str))
+        conn.commit()
+
+def get_top_users(limit=10):
+    if use_mongo and users_collection is not None:
+        cursor_mongo = users_collection.find({}, {"user_id": 1, "chu_luc": 1}).sort("chu_luc", -1).limit(limit)
+        return [(doc.get("user_id"), doc.get("chu_luc", 0)) for doc in cursor_mongo]
+    else:
+        cursor.execute('SELECT user_id, chu_luc FROM users ORDER BY chu_luc DESC LIMIT ?', (limit,))
+        return cursor.fetchall()
 
 # ==============================================================================
 # WEB SERVER & GEMINI CONFIG
@@ -172,8 +267,7 @@ async def on_message(message: discord.Message):
     if can_reward:
         if random.random() > 0.5: # 50% cơ hội nhận thưởng
             reward = random.randint(5, 20)
-            cursor.execute('UPDATE users SET chu_luc = chu_luc + ?, last_chat_reward = ? WHERE user_id = ?', (reward, now.isoformat(), user_id))
-            conn.commit()
+            update_user_chat_reward(user_id, reward, now.isoformat())
 
     content_lower = message.content.lower()
     is_reply_to_megumi = False
@@ -223,7 +317,12 @@ async def on_message(message: discord.Message):
 
                 await message.reply(reply_text, mention_author=False)
             except Exception as e:
-                await message.reply("...Tôi đang bận. Lát nữa nói chuyện sau.", mention_author=False)
+                print(f"Lỗi phản hồi tin nhắn: {e}", flush=True)
+                err_msg = str(e)
+                if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                    await message.reply("Tôi đã cạn kiệt năng lượng (Hết hạn mức API Google). Vui lòng đợi vài chục phút nữa rồi gọi lại.", mention_author=False)
+                else:
+                    await message.reply("...Tôi đang bận. Lát nữa nói chuyện sau.", mention_author=False)
 
     await bot.process_commands(message)
 
@@ -270,9 +369,7 @@ async def daily_reward(interaction: discord.Interaction):
     else:
         streak = 1
         
-    cursor.execute('UPDATE users SET chu_luc = chu_luc + ?, last_daily = ?, streak = ? WHERE user_id = ?', 
-                  (reward, now.isoformat(), streak, user_id))
-    conn.commit()
+    update_user_daily(user_id, reward, now.isoformat(), streak)
     
     embed = discord.Embed(
         title="🎁 Nạp Chú Lực Hằng Ngày",
@@ -300,18 +397,16 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
-        winnings = amount * 5
-        cursor.execute('UPDATE users SET chu_luc = chu_luc + ? WHERE user_id = ?', (winnings - amount, user_id))
+        winnings = amount * 8
+        update_user_chu_luc(user_id, winnings - amount)
         msg = f"Tốt lắm. Trúng giải độc đắc rồi. Cậu nhận được **{winnings:,} Chú lực**."
     elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
-        winnings = int(amount * 2)
-        cursor.execute('UPDATE users SET chu_luc = chu_luc + ? WHERE user_id = ?', (winnings - amount, user_id))
+        winnings = int(amount * 4)
+        update_user_chu_luc(user_id, winnings - amount)
         msg = f"Cũng tạm. Cậu nhận được **{winnings:,} Chú lực**."
     else:
-        cursor.execute('UPDATE users SET chu_luc = chu_luc - ? WHERE user_id = ?', (amount, user_id))
+        update_user_chu_luc(user_id, -amount)
         msg = f"Thua trắng rồi. Cậu mất **{amount:,} Chú lực**. Lần sau tính toán kỹ hơn đi."
-        
-    conn.commit()
     
     embed = discord.Embed(
         title="🎰 Rút Bài Chú Lực (Slot)",
@@ -322,8 +417,7 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
 
 @bot.tree.command(name="top", description="Bảng xếp hạng Chú lực")
 async def top_chu_luc(interaction: discord.Interaction):
-    cursor.execute('SELECT user_id, chu_luc FROM users ORDER BY chu_luc DESC LIMIT 10')
-    top_users = cursor.fetchall()
+    top_users = get_top_users(10)
     
     if not top_users:
         await interaction.response.send_message("Chưa có ai sở hữu Chú lực cả.")
