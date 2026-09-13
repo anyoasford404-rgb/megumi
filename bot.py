@@ -415,11 +415,11 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
         await interaction.response.send_message(f"Không đủ Chú lực. Cậu chỉ có {chu_luc:,}.", ephemeral=True)
         return
         
-    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌', '☸', '🐅', '⛩️']
+    slots = ['🐺', '🦉', '🐸', '🐍', '🐰', '🐘', '🐂', '🦌']
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
-        winnings = amount * 11
+        winnings = amount * 8
         update_user_chu_luc(user_id, winnings - amount)
         msg = f"Tốt lắm. Trúng giải độc đắc rồi. Cậu nhận được **{winnings:,} Chú lực**."
     elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
@@ -490,9 +490,9 @@ async def slash_sync_commands(interaction: discord.Interaction):
 # ==============================================================================
 
 SHOP_ITEMS = {
-    "ngoc_khuyen": {"name": "Ngọc Khuyển", "price": 800, "desc": "Mute đối phương 2 phút"},
-    "nue": {"name": "Nue (Chim Điện)", "price": 1500, "desc": "Mute đối phương 5 phút"},
-    "thoat_tho": {"name": "Thoát Thố", "price": 400, "desc": "40% tỷ lệ né Mute (tự tiêu hao 1 con)"},
+    "ngoc_khuyen": {"name": "Ngọc Khuyển", "price": 1600, "desc": "Mute đối phương 2 phút"},
+    "nue": {"name": "Nue (Chim Điện)", "price": 2000, "desc": "Mute đối phương 5 phút"},
+    "thoat_tho": {"name": "Thoát Thố", "price": 500, "desc": "40% tỷ lệ né Mute (tự tiêu hao 1 con)"},
     "mahoraga": {"name": "Mahoraga", "price": 50000, "desc": "Kháng Mute vĩnh viễn"}
 }
 
@@ -594,17 +594,21 @@ async def use_item(interaction: discord.Interaction, item: app_commands.Choice[s
         await interaction.response.send_message(f"🐺 **{interaction.user.display_name}** tung {SHOP_ITEMS[item.value]['name']} tấn công {target.mention}!\n🛡️ NHƯNG! Bánh xe luân hồi quay... **Mahoraga** của {target.display_name} đã thích nghi và hóa giải hoàn toàn đòn tấn công!")
         return
         
+    dodge_msg = ""
     if target_thoattho > 0:
         if random.random() <= 0.40:
             update_user_item(target.id, "thoat_tho", -1)
             await interaction.response.send_message(f"🐺 **{interaction.user.display_name}** tung {SHOP_ITEMS[item.value]['name']} tấn công {target.mention}!\n🐇 Đàn **Thoát Thố** của {target.display_name} xuất hiện đánh lạc hướng thành công! (Mất 1 Thoát Thố)")
             return
+        else:
+            update_user_item(target.id, "thoat_tho", -1)
+            dodge_msg = f"\n🐇 *(Đàn Thoát Thố của {target.display_name} đã ùa ra cản địa nhưng thất bại! Mất 1 Thoát Thố)*"
             
     duration_mins = 2 if item.value == "ngoc_khuyen" else 5
     try:
         until = discord.utils.utcnow() + timedelta(minutes=duration_mins)
         await target.timeout(until, reason=f"Bị {interaction.user.display_name} dùng {SHOP_ITEMS[item.value]['name']}")
-        await interaction.response.send_message(f"💥 **{interaction.user.display_name}** đã dùng **{SHOP_ITEMS[item.value]['name']}**!\n🔇 {target.mention} đã bị dính đòn và bị **CẤM NGÔN (Mute) {duration_mins} phút**!")
+        await interaction.response.send_message(f"💥 **{interaction.user.display_name}** đã dùng **{SHOP_ITEMS[item.value]['name']}**!{dodge_msg}\n🔇 {target.mention} đã bị dính đòn và bị **CẤM NGÔN (Mute) {duration_mins} phút**!")
     except discord.Forbidden:
         await interaction.response.send_message(f"❌ Tôi không đủ quyền để mute {target.mention}. Hãy kiểm tra xem Role (Vai trò) của tôi (Megumi) trong Server Settings có cao hơn người này chưa, và tôi đã được cấp quyền Timeout Members chưa.", ephemeral=True)
     except Exception as e:
