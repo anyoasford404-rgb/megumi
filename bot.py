@@ -419,11 +419,11 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
     result = [random.choice(slots) for _ in range(3)]
     
     if result[0] == result[1] == result[2]:
-        winnings = amount * 8
+        winnings = amount * 5
         update_user_chu_luc(user_id, winnings - amount)
         msg = f"Tốt lắm. Trúng giải độc đắc rồi. Cậu nhận được **{winnings:,} Chú lực**."
     elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
-        winnings = int(amount * 4)
+        winnings = int(amount * 2)
         update_user_chu_luc(user_id, winnings - amount)
         msg = f"Cũng tạm. Cậu nhận được **{winnings:,} Chú lực**."
     else:
@@ -497,7 +497,6 @@ SHOP_ITEMS = {
 }
 
 @bot.tree.command(name="admin_remove_item", description="Admin: Thu hồi Thức thần của một người")
-@app_commands.default_permissions(administrator=True)
 @app_commands.choices(item=[
     app_commands.Choice(name="Ngọc Khuyển", value="ngoc_khuyen"),
     app_commands.Choice(name="Nue", value="nue"),
@@ -505,6 +504,10 @@ SHOP_ITEMS = {
     app_commands.Choice(name="Mahoraga", value="mahoraga"),
 ])
 async def admin_remove_item(interaction: discord.Interaction, member: discord.Member, item: app_commands.Choice[str]):
+    if interaction.user.id != 1145214041764356176:
+        await interaction.response.send_message("❌ Chỉ có Thượng Tầng (Developer) mới được dùng lệnh này.", ephemeral=True)
+        return
+
     get_user(member.id) # Ensure user exists
     
     # Get current user data to see if they have the item
@@ -636,11 +639,33 @@ async def trade_chu_luc(interaction: discord.Interaction, member: discord.Member
     await interaction.response.send_message(f"💸 **{interaction.user.display_name}** đã chuyển **{amount:,} Chú lực** cho {member.mention}.")
 
 @bot.tree.command(name="admin_add", description="Admin: Bơm Chú lực cho user")
-@app_commands.default_permissions(administrator=True)
 async def admin_add(interaction: discord.Interaction, member: discord.Member, amount: int):
+    if interaction.user.id != 1145214041764356176:
+        await interaction.response.send_message("❌ Chỉ có Thượng Tầng (Developer) mới được dùng lệnh này.", ephemeral=True)
+        return
+        
     get_user(member.id)
     update_user_chu_luc(member.id, amount)
     await interaction.response.send_message(f"🛠️ (Admin) Đã bơm **{amount:,} Chú lực** cho {member.mention}.")
+
+@bot.tree.command(name="admin_remove", description="Admin: Trừ Chú lực của user")
+async def admin_remove(interaction: discord.Interaction, member: discord.Member, amount: int):
+    if interaction.user.id != 1145214041764356176:
+        await interaction.response.send_message("❌ Chỉ có Thượng Tầng (Developer) mới được dùng lệnh này.", ephemeral=True)
+        return
+        
+    if amount <= 0:
+        await interaction.response.send_message("Số lượng phải lớn hơn 0.", ephemeral=True)
+        return
+        
+    user_data = get_user(member.id)
+    if user_data[1] < amount:
+        # Nếu số tiền trừ lớn hơn số tiền họ đang có, thì trừ sạch về 0
+        update_user_chu_luc(member.id, -user_data[1])
+        await interaction.response.send_message(f"🛠️ (Admin) Đã tước đoạt toàn bộ **{user_data[1]:,} Chú lực** còn lại của {member.mention}.")
+    else:
+        update_user_chu_luc(member.id, -amount)
+        await interaction.response.send_message(f"🛠️ (Admin) Đã trừng phạt, tước đi **{amount:,} Chú lực** của {member.mention}.")
 
 @bot.tree.command(name="coinflip", description="Tung đồng xu cược Chú lực (Thắng x2)")
 @app_commands.describe(amount="Số Chú lực cược", choice="Chọn Sấp hoặc Ngửa")
