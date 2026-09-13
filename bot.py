@@ -47,12 +47,17 @@ if not use_mongo:
             last_chat_reward TIMESTAMP
         )
     ''')
+    for col in ['ngoc_khuyen', 'nue', 'thoat_tho', 'mahoraga']:
+        try:
+            cursor.execute(f'ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0')
+        except:
+            pass
     conn.commit()
     print("ℹ️ Đang sử dụng SQLite cục bộ (lưu ý: trên Render Free file .db sẽ bị reset khi restart).", flush=True)
 
 def get_user(user_id):
     """
-    Trả về tuple tương thích: (user_id, chu_luc, last_daily, streak, last_chat_reward)
+    Trả về tuple: (user_id, chu_luc, last_daily, streak, last_chat_reward, ngoc_khuyen, nue, thoat_tho, mahoraga)
     """
     uid_str = str(user_id)
     if use_mongo and users_collection is not None:
@@ -63,25 +68,42 @@ def get_user(user_id):
                 "chu_luc": 0,
                 "last_daily": None,
                 "streak": 0,
-                "last_chat_reward": None
+                "last_chat_reward": None,
+                "ngoc_khuyen": 0, "nue": 0, "thoat_tho": 0, "mahoraga": 0
             }
             users_collection.insert_one(new_doc)
-            return (uid_str, 0, None, 0, None)
+            return (uid_str, 0, None, 0, None, 0, 0, 0, 0)
         return (
             doc.get("user_id", uid_str),
             doc.get("chu_luc", 0),
             doc.get("last_daily", None),
             doc.get("streak", 0),
-            doc.get("last_chat_reward", None)
+            doc.get("last_chat_reward", None),
+            doc.get("ngoc_khuyen", 0),
+            doc.get("nue", 0),
+            doc.get("thoat_tho", 0),
+            doc.get("mahoraga", 0)
         )
     else:
-        cursor.execute('SELECT * FROM users WHERE user_id = ?', (uid_str,))
+        cursor.execute('SELECT user_id, chu_luc, last_daily, streak, last_chat_reward, ngoc_khuyen, nue, thoat_tho, mahoraga FROM users WHERE user_id = ?', (uid_str,))
         row = cursor.fetchone()
         if row is None:
             cursor.execute('INSERT INTO users (user_id) VALUES (?)', (uid_str,))
             conn.commit()
-            return (uid_str, 0, None, 0, None)
+            return (uid_str, 0, None, 0, None, 0, 0, 0, 0)
         return row
+
+def update_user_item(user_id, item_name, delta):
+    uid_str = str(user_id)
+    if use_mongo and users_collection is not None:
+        users_collection.update_one(
+            {"user_id": uid_str},
+            {"$inc": {item_name: delta}},
+            upsert=True
+        )
+    else:
+        cursor.execute(f'UPDATE users SET {item_name} = {item_name} + ? WHERE user_id = ?', (delta, uid_str))
+        conn.commit()
 
 def update_user_chat_reward(user_id, reward, now_iso):
     uid_str = str(user_id)
@@ -462,6 +484,156 @@ async def slash_sync_commands(interaction: discord.Interaction):
         await interaction.followup.send(f"Đã dọn sạch lệnh rác và đồng bộ {len(synced)} lệnh. Vui lòng bấm Ctrl+R trên Discord để cập nhật giao diện.")
     except Exception as e:
         await interaction.followup.send(f"Lỗi: {e}")
+
+# ==============================================================================
+# HỆ THỐNG CỬA HÀNG VÀ TÍNH NĂNG MỚI
+# ==============================================================================
+
+SHOP_ITEMS = {
+    "ngoc_khuyen": {"name": "Ngọc Khuyển", "price": 600, "desc": "Mute đối phương 2 phút"},
+    "nue": {"name": "Nue (Chim Điện)", "price": 1000, "desc": "Mute đối phương 5 phút"},
+    "thoat_tho": {"name": "Thoát Thố", "price": 300, "desc": "40% tỷ lệ né Mute (tự tiêu hao 1 con)"},
+    "mahoraga": {"name": "Mahoraga", "price": 7500, "desc": "Kháng Mute vĩnh viễn"}
+}
+
+@bot.tree.command(name="shop", description="Cửa hàng Thức thần")
+async def shop(interaction: discord.Interaction):
+    desc = ""
+    for k, v in SHOP_ITEMS.items():
+        desc += f"**{v['name']}** - 💰 {v['price']:,} Chú lực\n↳ *{v['desc']}*\n\n"
+    embed = discord.Embed(title="🛒 Cửa Hàng Thức Thần", description=desc, color=0x8B5CF6)
+    embed.set_footer(text="Dùng lệnh /buy để mua và /use để dùng")
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="buy", description="Mua vật phẩm từ cửa hàng")
+@app_commands.choices(item=[
+    app_commands.Choice(name="Ngọc Khuyển (600)", value="ngoc_khuyen"),
+    app_commands.Choice(name="Nue (1000)", value="nue"),
+    app_commands.Choice(name="Thoát Thố (300)", value="thoat_tho"),
+    app_commands.Choice(name="Mahoraga (7500)", value="mahoraga"),
+])
+async def buy_item(interaction: discord.Interaction, item: app_commands.Choice[str]):
+    user_data = get_user(interaction.user.id)
+    price = SHOP_ITEMS[item.value]["price"]
+    
+    if user_data[1] < price:
+        await interaction.response.send_message(f"Không đủ tiền. Cậu chỉ có {user_data[1]:,} Chú lực.", ephemeral=True)
+        return
+        
+    if item.value == "mahoraga" and user_data[8] > 0:
+        await interaction.response.send_message("Cậu đã sở hữu Mahoraga rồi, mua thêm làm gì?", ephemeral=True)
+        return
+        
+    update_user_chu_luc(interaction.user.id, -price)
+    update_user_item(interaction.user.id, item.value, 1)
+    
+    await interaction.response.send_message(f"🛍️ Cậu đã mua thành công **{SHOP_ITEMS[item.value]['name']}**!")
+
+@bot.tree.command(name="inventory", description="Xem túi đồ của cậu")
+async def inventory(interaction: discord.Interaction):
+    user_data = get_user(interaction.user.id)
+    desc = f"**Ngọc Khuyển:** {user_data[5]}\n**Nue:** {user_data[6]}\n**Thoát Thố:** {user_data[7]}\n**Mahoraga:** {'Có (Vĩnh viễn)' if user_data[8] > 0 else 'Không'}"
+    embed = discord.Embed(title="🎒 Túi Đồ Thức Thần", description=desc, color=0x22C55E)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="use", description="Dùng Thức thần tấn công (Mute) đối phương")
+@app_commands.choices(item=[
+    app_commands.Choice(name="Ngọc Khuyển (Mute 2p)", value="ngoc_khuyen"),
+    app_commands.Choice(name="Nue (Mute 5p)", value="nue")
+])
+async def use_item(interaction: discord.Interaction, item: app_commands.Choice[str], target: discord.Member):
+    if target.id == interaction.user.id:
+        await interaction.response.send_message("Bị ngốc à? Tự đánh mình làm gì.", ephemeral=True)
+        return
+        
+    if target.guild_permissions.administrator:
+        await interaction.response.send_message("Đối phương là Admin (Kẻ Vô Hạ Hạn), Thức thần của cậu không thể chạm vào họ!", ephemeral=True)
+        return
+        
+    user_data = get_user(interaction.user.id)
+    item_idx = 5 if item.value == "ngoc_khuyen" else 6
+    if user_data[item_idx] <= 0:
+        await interaction.response.send_message(f"Cậu không có {SHOP_ITEMS[item.value]['name']}. Hãy vào /shop để mua.", ephemeral=True)
+        return
+        
+    # Tiêu hao item
+    update_user_item(interaction.user.id, item.value, -1)
+    
+    target_data = get_user(target.id)
+    target_mahoraga = target_data[8]
+    target_thoattho = target_data[7]
+    
+    if target_mahoraga > 0:
+        await interaction.response.send_message(f"🐺 **{interaction.user.display_name}** tung {SHOP_ITEMS[item.value]['name']} tấn công {target.mention}!\n🛡️ NHƯNG! Bánh xe luân hồi quay... **Mahoraga** của {target.display_name} đã thích nghi và hóa giải hoàn toàn đòn tấn công!")
+        return
+        
+    if target_thoattho > 0:
+        if random.random() <= 0.40:
+            update_user_item(target.id, "thoat_tho", -1)
+            await interaction.response.send_message(f"🐺 **{interaction.user.display_name}** tung {SHOP_ITEMS[item.value]['name']} tấn công {target.mention}!\n🐇 Đàn **Thoát Thố** của {target.display_name} xuất hiện đánh lạc hướng thành công! (Mất 1 Thoát Thố)")
+            return
+            
+    duration_mins = 2 if item.value == "ngoc_khuyen" else 5
+    try:
+        until = discord.utils.utcnow() + timedelta(minutes=duration_mins)
+        await target.timeout(until, reason=f"Bị {interaction.user.display_name} dùng {SHOP_ITEMS[item.value]['name']}")
+        await interaction.response.send_message(f"💥 **{interaction.user.display_name}** đã dùng **{SHOP_ITEMS[item.value]['name']}**!\n🔇 {target.mention} đã bị dính đòn và bị **CẤM NGÔN (Mute) {duration_mins} phút**!")
+    except discord.Forbidden:
+        await interaction.response.send_message(f"❌ Tôi không đủ quyền để mute {target.mention}. Hãy kiểm tra xem Role (Vai trò) của tôi (Megumi) trong Server Settings có cao hơn người này chưa, và tôi đã được cấp quyền Timeout Members chưa.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Có lỗi: {e}", ephemeral=True)
+
+@bot.tree.command(name="trade", description="Chuyển Chú lực cho người khác")
+@app_commands.describe(member="Người nhận", amount="Số lượng Chú lực")
+async def trade_chu_luc(interaction: discord.Interaction, member: discord.Member, amount: int):
+    if amount <= 0:
+        await interaction.response.send_message("Số lượng phải lớn hơn 0.", ephemeral=True)
+        return
+    if member.id == interaction.user.id:
+        await interaction.response.send_message("Định tự chuyển cho chính mình à?", ephemeral=True)
+        return
+        
+    sender_data = get_user(interaction.user.id)
+    if sender_data[1] < amount:
+        await interaction.response.send_message(f"Không đủ Chú lực. Cậu chỉ có {sender_data[1]:,}.", ephemeral=True)
+        return
+        
+    update_user_chu_luc(interaction.user.id, -amount)
+    get_user(member.id) # Khởi tạo nếu chưa có
+    update_user_chu_luc(member.id, amount)
+    
+    await interaction.response.send_message(f"💸 **{interaction.user.display_name}** đã chuyển **{amount:,} Chú lực** cho {member.mention}.")
+
+@bot.tree.command(name="admin_add", description="Admin: Bơm Chú lực cho user")
+@app_commands.default_permissions(administrator=True)
+async def admin_add(interaction: discord.Interaction, member: discord.Member, amount: int):
+    get_user(member.id)
+    update_user_chu_luc(member.id, amount)
+    await interaction.response.send_message(f"🛠️ (Admin) Đã bơm **{amount:,} Chú lực** cho {member.mention}.")
+
+@bot.tree.command(name="coinflip", description="Tung đồng xu cược Chú lực (Thắng x2)")
+@app_commands.describe(amount="Số Chú lực cược", choice="Chọn Sấp hoặc Ngửa")
+@app_commands.choices(choice=[
+    app_commands.Choice(name="Sấp (Heads)", value="sap"),
+    app_commands.Choice(name="Ngửa (Tails)", value="ngua")
+])
+async def coinflip(interaction: discord.Interaction, amount: int, choice: app_commands.Choice[str]):
+    if amount <= 0:
+        await interaction.response.send_message("Cược số dương thôi.", ephemeral=True)
+        return
+        
+    user_data = get_user(interaction.user.id)
+    if user_data[1] < amount:
+        await interaction.response.send_message(f"Cậu không đủ Chú lực (Đang có: {user_data[1]:,})", ephemeral=True)
+        return
+        
+    outcome = random.choice(["sap", "ngua"])
+    if choice.value == outcome:
+        update_user_chu_luc(interaction.user.id, amount) 
+        await interaction.response.send_message(f"🪙 Đồng xu ra **{'Sấp' if outcome == 'sap' else 'Ngửa'}**!\n🎉 Cậu đã thắng và nhận được **{amount * 2:,} Chú lực** (Lãi {amount:,}).")
+    else:
+        update_user_chu_luc(interaction.user.id, -amount)
+        await interaction.response.send_message(f"🪙 Đồng xu ra **{'Sấp' if outcome == 'sap' else 'Ngửa'}**!\n💀 Cậu đoán sai và mất **{amount:,} Chú lực**.")
 
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
