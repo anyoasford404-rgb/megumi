@@ -291,8 +291,8 @@ async def on_message(message: discord.Message):
             reward = random.randint(5, 20)
             update_user_chat_reward(user_id, reward, now.isoformat())
 
-    # Random boss spawn - 3%
-    if random.random() <= 0.03:
+    # Random boss spawn - 8%
+    if random.random() <= 0.08:
         bot.loop.create_task(spawn_boss(message.channel))
 
     content_lower = message.content.lower()
@@ -472,8 +472,8 @@ async def spawn_boss(channel):
 
 @bot.tree.interaction_check
 async def check_boss_spawn(interaction: discord.Interaction):
-    # Random boss spawn trên slash command - 3%
-    if random.random() <= 0.03 and interaction.channel:
+    # Random boss spawn trên slash command - 8%
+    if random.random() <= 0.08 and interaction.channel:
         bot.loop.create_task(spawn_boss(interaction.channel))
     return True
 
