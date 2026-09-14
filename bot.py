@@ -291,6 +291,10 @@ async def on_message(message: discord.Message):
             reward = random.randint(5, 20)
             update_user_chat_reward(user_id, reward, now.isoformat())
 
+    # Random boss spawn - 3%
+    if random.random() <= 0.03:
+        bot.loop.create_task(spawn_boss(message.channel))
+
     content_lower = message.content.lower()
     is_reply_to_megumi = False
     if message.reference and message.reference.resolved:
@@ -349,8 +353,129 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ==============================================================================
+# BOSS RAID SYSTEM (DỊ THỂ MEGUMI)
+# ==============================================================================
+active_bosses = set()
+# Cậu có thể thay link ảnh này bằng link ảnh Discord cậu vừa upload nhé!
+BOSS_IMAGE_URL = "https://media.discordapp.net/attachments/1543072032034521228/1548911889524850788/content.png?ex=6aa8c81b&is=6aa7769b&hm=9293ac8a874a56b89e4229c59758837ea793a8ef02578c2e6d9b048c0c180163&=&format=webp&quality=lossless&width=770&height=1024" 
+
+class BossRaidView(discord.ui.View):
+    def __init__(self, channel_id):
+        super().__init__(timeout=120.0)
+        self.channel_id = channel_id
+        self.joined_users = set()
+
+    @discord.ui.button(label="Tham gia Raid (1,500 CL)", style=discord.ButtonStyle.danger, emoji="⚔️")
+    async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        if user_id in self.joined_users:
+            await interaction.response.send_message("Cậu đã có mặt trong đội hình rồi!", ephemeral=True)
+            return
+            
+        user_data = get_user(user_id)
+        if user_data[1] < 1500:
+            await interaction.response.send_message("Cậu không đủ 1,500 Chú lực để tham gia!", ephemeral=True)
+            return
+            
+        update_user_chu_luc(user_id, -1500)
+        self.joined_users.add(user_id)
+        await interaction.response.send_message(f"⚔️ **{interaction.user.display_name}** đã dũng cảm đóng 1,500 Chú lực để bước vào lãnh địa của Dị thể!", ephemeral=False)
+
+async def spawn_boss(channel):
+    if channel.id in active_bosses:
+        return
+    active_bosses.add(channel.id)
+    
+    embed = discord.Embed(
+        title="⚠️ Đó không phải Megumi? ⚠️",
+        description="Một **Dị Thể** mang hình dáng Megumi vừa giáng lâm!\n\n💰 **Phí tham gia:** 1,500 Chú lực.\n⏳ **Thời gian chờ:** Trận chiến sẽ bắt đầu sau đúng 2 phút.\n⚠️ **Cảnh báo:** Toàn bộ Ngọc Khuyển và Nue của người tham chiến sẽ BỊ TIÊU DIỆT vĩnh viễn (Kể cả thắng hay thua). Mahoraga không bị mất.",
+        color=0xFF0000
+    )
+    embed.set_image(url=BOSS_IMAGE_URL)
+    
+    view = BossRaidView(channel.id)
+    try:
+        msg = await channel.send(embed=embed, view=view)
+    except:
+        active_bosses.remove(channel.id)
+        return
+        
+    await asyncio.sleep(120)
+    
+    # Hết 2 phút
+    active_bosses.discard(channel.id)
+    
+    for child in view.children:
+        child.disabled = True
+    try:
+        await msg.edit(view=view)
+    except:
+        pass
+        
+    if not view.joined_users:
+        await channel.send("💨 **Dị thể** đã tự động giải trừ vì không có Chú thuật sư nào dám thách thức.")
+        return
+        
+    await channel.send(f"🔥 **TRẬN CHIẾN BẮT ĐẦU!** Tổ đội gồm {len(view.joined_users)} người đang lao vào tấn công Dị thể...")
+    await asyncio.sleep(3) # Tạo cảm giác chờ đợi
+    
+    total_damage = 0
+    participants_mentions = []
+    
+    for uid in view.joined_users:
+        user_data = get_user(uid)
+        nk = user_data[5]
+        nue = user_data[6]
+        maho = user_data[8]
+        
+        dmg = (nk * 1) + (nue * 2) + (6 if maho > 0 else 0)
+        total_damage += dmg
+        
+        # Tiêu hao
+        if nk > 0:
+            update_user_item(uid, "ngoc_khuyen", -nk)
+        if nue > 0:
+            update_user_item(uid, "nue", -nue)
+            
+        participants_mentions.append(f"<@{uid}>")
+        
+    mentions_str = " ".join(participants_mentions)
+    
+    if total_damage >= 24:
+        # Win
+        shared_bonus = 3000 // len(view.joined_users)
+        reward_text = ""
+        for uid in view.joined_users:
+            personal_reward = random.randint(10000, 17000)
+            total_reward = personal_reward + shared_bonus
+            update_user_chu_luc(uid, total_reward)
+            reward_text += f"<@{uid}>: +{total_reward:,} CL\n"
+            
+        win_embed = discord.Embed(
+            title="🎉 VICTORY! Dị Thể Đã Bị Thanh Tẩy!",
+            description=f"⚔️ **Sát thương đội hình:** {total_damage}/24 HP\n\n*(Dị thể đã bị thanh tẩy, chú lực được thanh lọc)*\n\n**🎁 Phần thưởng (Bao gồm {shared_bonus:,} CL chia đều):**\n{reward_text}",
+            color=0x10B981
+        )
+        await channel.send(mentions_str, embed=win_embed)
+    else:
+        # Lose
+        lose_embed = discord.Embed(
+            title="💀 DEFEAT! Tổ Đội Đã Bị Quét Sạch!",
+            description=f"⚔️ **Sát thương đội hình:** {total_damage}/24 HP\n\nSát thương không đủ để hạ gục Dị thể! Nó đã càn quét toàn bộ Thức thần của những người tham gia và biến mất vào bóng tối...",
+            color=0x000000
+        )
+        await channel.send(mentions_str, embed=lose_embed)
+
+# ==============================================================================
 # LỆNH SLASH
 # ==============================================================================
+
+@bot.tree.interaction_check
+async def check_boss_spawn(interaction: discord.Interaction):
+    # Random boss spawn trên slash command - 3%
+    if random.random() <= 0.03 and interaction.channel:
+        bot.loop.create_task(spawn_boss(interaction.channel))
+    return True
 
 @bot.tree.command(name="check", description="Kiểm tra lượng Chú lực và Chuỗi điểm danh của bạn")
 async def check_stats(interaction: discord.Interaction):
@@ -666,6 +791,15 @@ async def admin_remove(interaction: discord.Interaction, member: discord.Member,
     else:
         update_user_chu_luc(member.id, -amount)
         await interaction.response.send_message(f"🛠️ (Admin) Đã trừng phạt, tước đi **{amount:,} Chú lực** của {member.mention}.")
+
+@bot.tree.command(name="admin_spawn_boss", description="Admin: Triệu hồi Dị thể Megumi để Raid")
+async def admin_spawn_boss(interaction: discord.Interaction):
+    if interaction.user.id != 1502579398560317441:
+        await interaction.response.send_message("❌ Kẻ mạo danh! Chỉ có Chủ nhân (Developer) mới được dùng quyền này.", ephemeral=True)
+        return
+        
+    await interaction.response.send_message("⚠️ Đang giải phóng Dị thể...", ephemeral=True)
+    bot.loop.create_task(spawn_boss(interaction.channel))
 
 @bot.tree.command(name="coinflip", description="Tung đồng xu cược Chú lực (Thắng x2)")
 @app_commands.describe(amount="Số Chú lực cược", choice="Chọn Sấp hoặc Ngửa")
