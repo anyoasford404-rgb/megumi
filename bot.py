@@ -283,12 +283,12 @@ async def on_message(message: discord.Message):
         can_reward = True
     else:
         last_time = datetime.fromisoformat(last_chat_reward)
-        if (now - last_time).total_seconds() > 60: # Cooldown 1 phút
+        if (now - last_time).total_seconds() > 120: # Cooldown 2 phút
             can_reward = True
             
     if can_reward:
         if random.random() > 0.5: # 50% cơ hội nhận thưởng
-            reward = random.randint(5, 20)
+            reward = random.randint(5, 30)
             update_user_chat_reward(user_id, reward, now.isoformat())
 
     # Random boss spawn - 8%
@@ -656,6 +656,9 @@ SHOP_ITEMS = {
     "mahoraga": {"name": "Mahoraga", "price": 50000, "desc": "Kháng Mute vĩnh viễn"}
 }
 
+thoat_tho_bonus = {} # {user_id: bonus_chance (float)}
+last_dungeon_times = {} # {user_id: "YYYY-MM-DD"}
+
 @bot.tree.command(name="admin_remove_item", description="Admin: Thu hồi Thức thần của một người")
 @app_commands.choices(item=[
     app_commands.Choice(name="Ngọc Khuyển", value="ngoc_khuyen"),
@@ -759,13 +762,19 @@ async def use_item(interaction: discord.Interaction, item: app_commands.Choice[s
         
     dodge_msg = ""
     if target_thoattho > 0:
-        if random.random() <= 0.40:
+        base_chance = 0.40
+        bonus_chance = thoat_tho_bonus.get(target.id, 0.0)
+        total_chance = base_chance + bonus_chance
+        
+        if random.random() <= total_chance:
             update_user_item(target.id, "thoat_tho", -1)
-            await interaction.response.send_message(f"🐺 **{interaction.user.display_name}** tung {SHOP_ITEMS[item.value]['name']} tấn công {target.mention}!\n🐇 Đàn **Thoát Thố** của {target.display_name} xuất hiện đánh lạc hướng thành công! (Mất 1 Thoát Thố)")
+            thoat_tho_bonus[target.id] = 0.0 # Reset
+            await interaction.response.send_message(f"🐺 **{interaction.user.display_name}** tung {SHOP_ITEMS[item.value]['name']} tấn công {target.mention}!\n🐇 Đàn **Thoát Thố** của {target.display_name} xuất hiện đánh lạc hướng thành công (Tỷ lệ né: {int(total_chance*100)}%)! (Mất 1 Thoát Thố)")
             return
         else:
             update_user_item(target.id, "thoat_tho", -1)
-            dodge_msg = f"\n🐇 *(Đàn Thoát Thố của {target.display_name} đã ùa ra cản địa nhưng thất bại! Mất 1 Thoát Thố)*"
+            thoat_tho_bonus[target.id] = bonus_chance + 0.05
+            dodge_msg = f"\n🐇 *(Đàn Thoát Thố của {target.display_name} đã ùa ra cản địa nhưng thất bại! Tỉ lệ né ván sau tăng thành {int((total_chance+0.05)*100)}%. Mất 1 Thoát Thố)*"
             
     duration_mins = 2 if item.value == "ngoc_khuyen" else 5
     try:
@@ -835,6 +844,42 @@ async def admin_spawn_boss(interaction: discord.Interaction):
         
     await interaction.response.send_message("⚠️ Đang giải phóng Dị thể...", ephemeral=True)
     bot.loop.create_task(spawn_boss(interaction.channel))
+
+@bot.tree.command(name="dungeon", description="Tham gia khám phá Hầm ngục. Phí: 2,000 CL. Nhận 1k-11k CL (1 lần/ngày)")
+async def dungeon(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    user_data = get_user(user_id)
+    
+    # Kiểm tra cooldown ngày
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    if last_dungeon_times.get(user_id) == today_str:
+        await interaction.response.send_message("❌ Cậu đã vào Hầm ngục ngày hôm nay rồi, hãy quay lại vào ngày mai nhé!", ephemeral=True)
+        return
+        
+    # Kiểm tra tiền
+    if user_data[1] < 2000:
+        await interaction.response.send_message(f"❌ Cậu không đủ 2,000 Chú lực để vào Hầm ngục (Hiện tại có {user_data[1]:,}).", ephemeral=True)
+        return
+        
+    # Tiêu phí
+    update_user_chu_luc(user_id, -2000)
+    
+    # Random phần thưởng 1000 -> 11000
+    reward = random.randint(1000, 11000)
+    update_user_chu_luc(user_id, reward)
+    
+    # Lưu cooldown
+    last_dungeon_times[user_id] = today_str
+    
+    profit = reward - 2000
+    if profit > 0:
+        msg = f"🎉 **{interaction.user.display_name}** đã dũng cảm bước vào Hầm ngục và tìm thấy **{reward:,} Chú lực**! (Lãi {profit:,} CL)"
+    else:
+        msg = f"🏚️ **{interaction.user.display_name}** bước vào Hầm ngục nhưng chỉ thu thập được **{reward:,} Chú lực**. (Lỗ {-profit:,} CL)"
+        
+    embed = discord.Embed(title="⚔️ Khám phá Hầm ngục", description=msg, color=0x3B82F6 if profit > 0 else 0xEF4444)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="coinflip", description="Tung đồng xu cược Chú lực (Thắng x2)")
 @app_commands.describe(amount="Số Chú lực cược", choice="Chọn Sấp hoặc Ngửa")
