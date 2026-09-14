@@ -422,23 +422,58 @@ async def spawn_boss(channel):
     total_damage = 0
     participants_mentions = []
     
+    available_nk = {}
+    available_nue = {}
+    
+    # Bước 1: Tính sát thương từ Mahoraga trước (không bị tiêu hao)
     for uid in view.joined_users:
         user_data = get_user(uid)
-        nk = user_data[5]
-        nue = user_data[6]
+        available_nk[uid] = user_data[5]
+        available_nue[uid] = user_data[6]
+        
         maho = user_data[8]
-        
-        dmg = (nk * 1) + (nue * 2) + (6 if maho > 0 else 0)
-        total_damage += dmg
-        
-        # Tiêu hao
-        if nk > 0:
-            update_user_item(uid, "ngoc_khuyen", -nk)
-        if nue > 0:
-            update_user_item(uid, "nue", -nue)
+        if maho > 0:
+            total_damage += 6
             
         participants_mentions.append(f"<@{uid}>")
         
+    consumption = {uid: {"ngoc_khuyen": 0, "nue": 0} for uid in view.joined_users}
+    
+    # Bước 2: Chia đều lượng Nue phải tiêu hao (mỗi người 1 con lần lượt cho đến khi đủ sát thương)
+    while total_damage < 24:
+        used_any = False
+        for uid in view.joined_users:
+            if total_damage >= 24:
+                break
+            if available_nue[uid] > 0:
+                available_nue[uid] -= 1
+                consumption[uid]["nue"] += 1
+                total_damage += 2
+                used_any = True
+        if not used_any:
+            break
+            
+    # Bước 3: Chia đều lượng Ngọc Khuyển phải tiêu hao
+    while total_damage < 24:
+        used_any = False
+        for uid in view.joined_users:
+            if total_damage >= 24:
+                break
+            if available_nk[uid] > 0:
+                available_nk[uid] -= 1
+                consumption[uid]["ngoc_khuyen"] += 1
+                total_damage += 1
+                used_any = True
+        if not used_any:
+            break
+
+    # Trừ vào database
+    for uid, consumed in consumption.items():
+        if consumed["ngoc_khuyen"] > 0:
+            update_user_item(uid, "ngoc_khuyen", -consumed["ngoc_khuyen"])
+        if consumed["nue"] > 0:
+            update_user_item(uid, "nue", -consumed["nue"])
+            
     mentions_str = " ".join(participants_mentions)
     
     if total_damage >= 24:
