@@ -291,9 +291,8 @@ async def on_message(message: discord.Message):
             reward = random.randint(5, 30)
             update_user_chat_reward(user_id, reward, now.isoformat())
 
-    # Random boss spawn - 8%
-    if random.random() <= 0.08:
-        bot.loop.create_task(spawn_boss(message.channel))
+    # Random boss spawn - 8% (cooldown 15p)
+    try_spawn_random_boss(message.channel)
 
     content_lower = message.content.lower()
     is_reply_to_megumi = False
@@ -356,6 +355,19 @@ async def on_message(message: discord.Message):
 # BOSS RAID SYSTEM (DỊ THỂ MEGUMI)
 # ==============================================================================
 active_bosses = set()
+last_random_spawn_time = None
+
+def try_spawn_random_boss(channel):
+    global last_random_spawn_time
+    now = datetime.now()
+    # Cooldown 15 phút (900 giây) giữa các lần xuất hiện ngẫu nhiên
+    if last_random_spawn_time is not None and (now - last_random_spawn_time).total_seconds() < 900:
+        return
+        
+    if random.random() <= 0.08:
+        last_random_spawn_time = now
+        bot.loop.create_task(spawn_boss(channel))
+
 # Cậu có thể thay link ảnh này bằng link ảnh Discord cậu vừa upload nhé!
 BOSS_IMAGE_URL = "https://media.discordapp.net/attachments/1543072032034521228/1548911889524850788/content.png?ex=6aa8c81b&is=6aa7769b&hm=9293ac8a874a56b89e4229c59758837ea793a8ef02578c2e6d9b048c0c180163&=&format=webp&quality=lossless&width=770&height=1024" 
 
@@ -507,9 +519,9 @@ async def spawn_boss(channel):
 
 @bot.tree.interaction_check
 async def check_boss_spawn(interaction: discord.Interaction):
-    # Random boss spawn trên slash command - 8%
-    if random.random() <= 0.08 and interaction.channel:
-        bot.loop.create_task(spawn_boss(interaction.channel))
+    # Random boss spawn trên slash command - 8% (cooldown 15p)
+    if interaction.channel:
+        try_spawn_random_boss(interaction.channel)
     return True
 
 @bot.tree.command(name="check", description="Kiểm tra lượng Chú lực và Chuỗi điểm danh của bạn")
